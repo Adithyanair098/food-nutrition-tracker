@@ -1,21 +1,21 @@
 import 'dart:io';
-import '../repositories/local_meal_repository.dart';
+
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 import '../models/food_prediction.dart';
 import '../services/gemini_service.dart';
-import 'nutrition_result_screen.dart';
+import 'measurement_screen.dart';
 
 class FoodSelectionScreen extends StatefulWidget {
   final File imageFile;
-  final double weightG;
+  // weightG removed — measurement input now happens in MeasurementScreen,
+  // after the food has been confirmed by the user.
   final GeminiAnalysisResult geminiResult;
 
   const FoodSelectionScreen({
     super.key,
     required this.imageFile,
-    required this.weightG,
     required this.geminiResult,
   });
 
@@ -24,7 +24,7 @@ class FoodSelectionScreen extends StatefulWidget {
 }
 
 class _FoodSelectionScreenState extends State<FoodSelectionScreen> {
-  int _selectedIndex = 0;   // default to top prediction
+  int _selectedIndex = 0; // default to top prediction
   bool _noneOfThese = false;
   final TextEditingController _manualController = TextEditingController();
 
@@ -47,17 +47,15 @@ class _FoodSelectionScreenState extends State<FoodSelectionScreen> {
   }
 
   void _onConfirm() {
+    // Navigate to MeasurementScreen with the confirmed food name.
+    // ServingConverter can now use the real food name for piece-weight lookup.
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => NutritionResultScreen(
+        builder: (_) => MeasurementScreen(
           imageFile: widget.imageFile,
           confirmedFoodName: _confirmedFoodName,
-          weightG: widget.weightG,
-          // M3: Gemini's estimate for the top prediction.
-          // M4: Replace with USDA SQLite lookup for _confirmedFoodName.
           nutritionPer100g: widget.geminiResult.nutritionPer100g,
-          repository: LocalMealRepository(),
         ),
       ),
     );
@@ -146,7 +144,7 @@ class _FoodSelectionScreenState extends State<FoodSelectionScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Private Sub-Widgets
+// Private Sub-Widgets  (unchanged)
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _FoodImageThumbnail extends StatelessWidget {
