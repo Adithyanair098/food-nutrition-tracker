@@ -12,6 +12,9 @@
 .swiftpm/
 migrate_working_dir/
 
+# Gemini API key — never commit this file
+lib/config/api_config.dart
+
 # IntelliJ related
 *.iml
 *.ipr
