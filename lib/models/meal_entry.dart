@@ -127,7 +127,47 @@ class MealEntry {
         loggedAt: loggedAt ?? this.loggedAt,
         mealType: mealType ?? this.mealType,
       );
+  /// Returns a new [MealEntry] with all nutrition values proportionally
+  /// rescaled to [newWeightGrams].
+  ///
+  /// This performs a pure ratio scale against the values already stored on
+  /// this entry — it never re-derives or reconstructs the original
+  /// per-100g AI prediction, and never contacts Gemini or any other
+  /// service. It is the only sanctioned way to change a saved meal's
+  /// weight: [FoodSelectionScreen] / [NutritionResultScreen] are never
+  /// invoked during an edit.
+  ///
+  /// [id] and [loggedAt] are deliberately never overridden here — editing
+  /// must update the existing record in place, never create a new one.
+  ///
+  /// Throws [ArgumentError] if [newWeightGrams] is not positive, or if the
+  /// current [weightGrams] is zero (which would make the scale ratio
+  /// undefined and silently corrupt saved values with NaN).
+  MealEntry recalculatedForWeight(double newWeightGrams) {
+    if (newWeightGrams <= 0) {
+      throw ArgumentError.value(
+        newWeightGrams,
+        'newWeightGrams',
+        'Weight must be greater than zero.',
+      );
+    }
+    if (weightGrams <= 0) {
+      throw StateError(
+        'Cannot rescale MealEntry "$id": current weightGrams is zero.',
+      );
+    }
 
+    final ratio = newWeightGrams / weightGrams;
+
+    return copyWith(
+      weightGrams: newWeightGrams,
+      calories: calories * ratio,
+      proteinG: proteinG * ratio,
+      carbsG: carbsG * ratio,
+      fatG: fatG * ratio,
+      fiberG: fiberG * ratio,
+    );
+  }
   // ── Computed ──────────────────────────────────────────────────────────────
 
   /// Sum of the three tracked macros in grams.

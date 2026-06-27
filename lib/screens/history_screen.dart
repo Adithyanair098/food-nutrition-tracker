@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../models/meal_entry.dart';
 import '../repositories/meal_repository.dart';
+import '../services/meal_events.dart';
+import 'edit_meal_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   /// Abstract repository — swap to FirebaseMealRepository in a future
@@ -22,10 +25,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
   List<MealEntry> _entries = [];
   bool _isLoading = true;
 
+  late final StreamSubscription<void> _mealChangesSubscription;
+
   @override
   void initState() {
     super.initState();
     _loadEntries();
+
+    // Picks up changes made outside this screen's own delete flow —
+    // principally a save from EditMealScreen, which has no direct
+    // callback back into HistoryScreen since it's a separately pushed
+    // route. Reuses the same MealEvents stream HomeScreen listens to,
+    // rather than introducing a second refresh mechanism.
+    _mealChangesSubscription = MealEvents.instance.changes.listen((_) {
+      _loadEntries();
+    });
+  }
+
+  @override
+  void dispose() {
+    _mealChangesSubscription.cancel();
+    super.dispose();
   }
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -51,11 +71,41 @@ class _HistoryScreenState extends State<HistoryScreen> {
     try {
       await widget.repository.deleteEntry(id);
       if (!mounted) return;
+      // Local splice keeps the swipe-to-delete exit animation smooth.
+      // This is independent of MealEvents: repository.deleteEntry already
+      // fires that event for other listeners (HomeScreen, and this
+      // screen's own subscription above, which will simply re-confirm
+      // the same state on its next tick).
       setState(() => _entries.removeWhere((e) => e.id == id));
     } catch (_) {
       if (!mounted) return;
       _showError('Could not delete meal. Please try again.');
     }
+  }
+
+  /// Shared confirm-then-delete flow used by both the swipe gesture and
+  /// the explicit delete button, so there is exactly one place that
+  /// decides what "deleting a meal" means.
+  Future<void> _confirmAndDelete(String id) async {
+    final confirmed = await _confirmDelete(context);
+    if (!confirmed) return;
+    await _deleteEntry(id);
+  }
+
+  /// Pushes [EditMealScreen] for [entry]. No result-handling is needed
+  /// here: a successful save calls MealRepository.updateEntry, which
+  /// fires MealEvents — this screen's subscription (see initState)
+  /// handles the refresh automatically, whether the user saved or
+  /// cancelled.
+  Future<void> _navigateToEdit(MealEntry entry) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EditMealScreen(
+          entry: entry,
+          repository: widget.repository,
+        ),
+      ),
+    );
   }
 
   // ── Date navigation ───────────────────────────────────────────────────────
@@ -193,7 +243,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 // onDismissed updates _entries after the exit animation
                 // completes, keeping the list consistent with the DB.
                 onDismissed: (_) => _deleteEntry(entry.id),
-                child: _MealEntryCard(entry: entry),
+                child: _MealEntryCard(
+                  entry: entry,
+                  onEdit: () => _navigateToEdit(entry),
+                  onDelete: () => _confirmAndDelete(entry.id),
+                ),
               );
             },
           ),
@@ -346,11 +400,22 @@ class _MacroSummaryItem extends StatelessWidget {
   }
 }
 
-/// Card for a single logged meal. Swipe left to reveal the delete action.
+/// Card for a single logged meal.
+///
+/// Supports two equally functional delete paths — swipe-to-dismiss
+/// (handled by the parent's Dismissible) and the explicit delete icon
+/// button below — plus an edit action. Both buttons delegate entirely to
+/// callbacks; this widget owns no business logic of its own.
 class _MealEntryCard extends StatelessWidget {
   final MealEntry entry;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
-  const _MealEntryCard({required this.entry});
+  const _MealEntryCard({
+    required this.entry,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -362,6 +427,7 @@ class _MealEntryCard extends StatelessWidget {
         border: Border.all(color: AppTheme.divider),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _MealThumbnail(imagePath: entry.imagePath),
           const SizedBox(width: 12),
@@ -403,23 +469,49 @@ class _MealEntryCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 6),
-                // Weight + calorie chips
-                Row(
+                // Weight + calorie + protein chips
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
                     _InfoChip(
                       icon: Icons.scale_rounded,
                       label: '${entry.weightGrams.toStringAsFixed(0)}g',
                     ),
-                    const SizedBox(width: 8),
                     _InfoChip(
                       icon: Icons.local_fire_department_rounded,
                       label: '${entry.calories.toStringAsFixed(0)} kcal',
                       color: AppTheme.primary,
                     ),
+                    _InfoChip(
+                      icon: Icons.fitness_center_rounded,
+                      label: '${entry.proteinG.toStringAsFixed(0)}g protein',
+                    ),
                   ],
                 ),
               ],
             ),
+          ),
+          // Edit / Delete actions. Compact density keeps the card height
+          // unchanged from before this milestone.
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, size: 20),
+                color: AppTheme.textSecondary,
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Edit meal',
+                onPressed: onEdit,
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                color: Colors.red.shade700,
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Delete meal',
+                onPressed: onDelete,
+              ),
+            ],
           ),
         ],
       ),
@@ -459,7 +551,7 @@ class _MealThumbnail extends StatelessWidget {
   }
 }
 
-/// Icon + label chip used for weight and calorie display.
+/// Icon + label chip used for weight, calorie, and protein display.
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
