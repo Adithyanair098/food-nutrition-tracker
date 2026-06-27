@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app_theme.dart';
+import '../models/serving_unit.dart';
 import '../services/gemini_service.dart';
+import '../services/serving_converter.dart';
 import 'food_selection_screen.dart';
 
 class AddMealScreen extends StatefulWidget {
@@ -16,23 +18,26 @@ class AddMealScreen extends StatefulWidget {
 
 class _AddMealScreenState extends State<AddMealScreen> {
   File? _selectedImage;
-  final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _quantityController = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
+
+  // Serving unit state — grams selected by default.
+  ServingUnit _selectedUnit = ServingUnit.grams;
 
   bool _isPickerLoading = false;
   bool _isAnalysing = false;
 
   @override
   void dispose() {
-    _weightController.dispose();
+    _quantityController.dispose();
     super.dispose();
   }
 
   bool get _canProceed {
-    final weight = double.tryParse(_weightController.text.trim());
+    final qty = double.tryParse(_quantityController.text.trim());
     return _selectedImage != null &&
-        weight != null &&
-        weight > 0 &&
+        qty != null &&
+        qty > 0 &&
         !_isAnalysing;
   }
 
@@ -70,11 +75,19 @@ class _AddMealScreenState extends State<AddMealScreen> {
   Future<void> _onAnalysePressed() async {
     if (!_canProceed) return;
 
-    final double weight = double.parse(_weightController.text.trim());
+    final double quantity = double.parse(_quantityController.text.trim());
+
+    // Convert the user-entered quantity + unit into grams.
+    // foodName is null here because Gemini hasn't run yet.
+    // Piece-weight lookup will use the generic default (100 g) at this stage.
+    final double weightG = const ServingConverter().toGrams(
+      quantity: quantity,
+      unit: _selectedUnit,
+    );
 
     setState(() => _isAnalysing = true);
 
-    // Show non-dismissible loading dialog while API call runs
+    // Show non-dismissible loading dialog while API call runs.
     if (mounted) {
       showDialog(
         context: context,
@@ -94,7 +107,7 @@ class _AddMealScreenState extends State<AddMealScreen> {
         MaterialPageRoute(
           builder: (_) => FoodSelectionScreen(
             imageFile: _selectedImage!,
-            weightG: weight,
+            weightG: weightG,
             geminiResult: result,
           ),
         ),
@@ -151,14 +164,17 @@ class _AddMealScreenState extends State<AddMealScreen> {
               _PickerButtons(onPickImage: _pickImage),
               const SizedBox(height: 32),
 
-              _WeightInputField(
-                controller: _weightController,
+              // Replaced _WeightInputField with _ServingInputField.
+              _ServingInputField(
+                controller: _quantityController,
+                selectedUnit: _selectedUnit,
                 onChanged: (_) => setState(() {}),
+                onUnitChanged: (unit) => setState(() => _selectedUnit = unit),
               ),
               const SizedBox(height: 40),
 
               ElevatedButton(
-                onPressed: _canProceed ? () { _onAnalysePressed(); } : null,
+                onPressed: _canProceed ? _onAnalysePressed : null,
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                   disabledBackgroundColor: AppTheme.divider,
@@ -171,7 +187,7 @@ class _AddMealScreenState extends State<AddMealScreen> {
                 const SizedBox(height: 10),
                 const Center(
                   child: Text(
-                    'Add a photo and enter weight to continue.',
+                    'Add a photo and enter quantity to continue.',
                     style: TextStyle(
                         color: AppTheme.textSecondary, fontSize: 12),
                   ),
@@ -186,14 +202,15 @@ class _AddMealScreenState extends State<AddMealScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Private Sub-Widgets  (unchanged from Milestone 2)
+// Private Sub-Widgets
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _ImagePickerArea extends StatelessWidget {
   final File? selectedImage;
   final bool isLoading;
 
-  const _ImagePickerArea({required this.selectedImage, required this.isLoading});
+  const _ImagePickerArea(
+      {required this.selectedImage, required this.isLoading});
 
   @override
   Widget build(BuildContext context) {
@@ -302,38 +319,79 @@ class _SourceButton extends StatelessWidget {
   }
 }
 
-class _WeightInputField extends StatelessWidget {
+/// Quantity number field + unit dropdown side by side.
+/// Replaces the old grams-only _WeightInputField.
+class _ServingInputField extends StatelessWidget {
   final TextEditingController controller;
+  final ServingUnit selectedUnit;
   final ValueChanged<String> onChanged;
+  final ValueChanged<ServingUnit> onUnitChanged;
 
-  const _WeightInputField(
-      {required this.controller, required this.onChanged});
+  const _ServingInputField({
+    required this.controller,
+    required this.selectedUnit,
+    required this.onChanged,
+    required this.onUnitChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Food Weight', style: Theme.of(context).textTheme.titleMedium),
+        Text('Quantity', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          onChanged: onChanged,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
-          textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
-            hintText: 'e.g. 150',
-            suffixText: 'g',
-            suffixStyle: TextStyle(
-                color: AppTheme.primary,
-                fontWeight: FontWeight.w700,
-                fontSize: 16),
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Quantity number field (40% width)
+            Expanded(
+              flex: 4,
+              child: TextField(
+                controller: controller,
+                onChanged: onChanged,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  hintText: 'e.g. 1',
+                  suffixText: selectedUnit.symbol,
+                  suffixStyle: const TextStyle(
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Unit dropdown (60% width)
+            Expanded(
+              flex: 6,
+              child: DropdownButtonFormField<ServingUnit>(
+                initialValue: selectedUnit,
+                decoration: const InputDecoration(
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                ),
+                items: ServingUnit.values
+                    .map(
+                      (unit) => DropdownMenuItem(
+                        value: unit,
+                        child: Text(unit.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (unit) {
+                  if (unit != null) onUnitChanged(unit);
+                },
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 6),
         const Text(
-          'Weigh your food first, then enter the value above.',
+          'Enter the quantity and select the unit.',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
         ),
       ],
