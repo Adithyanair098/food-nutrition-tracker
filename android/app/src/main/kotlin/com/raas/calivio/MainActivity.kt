@@ -1,4 +1,4 @@
-package com.example.food_nutrition_tracker
+package com.raas.calivio
 
 import io.flutter.embedding.android.FlutterActivity
 

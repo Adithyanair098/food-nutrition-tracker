@@ -310,7 +310,7 @@ class _QuantityInputField extends StatelessWidget {
             Expanded(
               flex: 6,
               child: DropdownButtonFormField<ServingUnit>(
-                value: selectedUnit,
+                initialValue: selectedUnit,
                 decoration: const InputDecoration(
                   contentPadding:
                       EdgeInsets.symmetric(horizontal: 14, vertical: 14),

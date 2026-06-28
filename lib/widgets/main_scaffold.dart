@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
 import '../screens/add_meal_screen.dart';
 import '../screens/history_screen.dart';
+import '../screens/analytics_screen.dart';
 import '../repositories/local_meal_repository.dart';
 
 class MainScaffold extends StatefulWidget {
@@ -21,6 +22,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     HistoryScreen(
       repository: LocalMealRepository(),
     ),
+    AnalyticsScreen(),
   ];
 
   @override
@@ -51,6 +53,11 @@ class _MainScaffoldState extends State<MainScaffold> {
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history),
             label: 'History',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: 'Analytics',
           ),
         ],
       ),

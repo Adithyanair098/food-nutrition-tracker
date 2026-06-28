@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app_theme.dart';
+import '../services/analysis_cache.dart';
 import '../services/gemini_service.dart';
+import '../services/image_compression_service.dart';
 import 'food_selection_screen.dart';
 
 class AddMealScreen extends StatefulWidget {
@@ -21,11 +23,9 @@ class _AddMealScreenState extends State<AddMealScreen> {
   bool _isPickerLoading = false;
   bool _isAnalysing = false;
 
-  // Weight and unit input have moved to MeasurementScreen, which runs
-  // after food confirmation. _canProceed now only requires an image.
   bool get _canProceed => _selectedImage != null && !_isAnalysing;
 
-  // ── Image Picker ───────────────────────────────────────────────────────
+  // ── Image Picker ───────────────────────────────────────────────────────────
 
   Future<void> _pickImage(ImageSource source) async {
     if (_isPickerLoading || _isAnalysing) return;
@@ -39,6 +39,9 @@ class _AddMealScreenState extends State<AddMealScreen> {
         imageQuality: 85,
       );
       if (picked != null && mounted) {
+        // Evict any cached result for the previous image immediately.
+        // Must happen before setState so the new path is not yet stored.
+        AnalysisCache.instance.invalidate();
         setState(() => _selectedImage = File(picked.path));
       }
     } catch (_) {
@@ -54,29 +57,61 @@ class _AddMealScreenState extends State<AddMealScreen> {
     }
   }
 
-  // ── Analyse Food ───────────────────────────────────────────────────────
+  // ── Analyse Food ───────────────────────────────────────────────────────────
 
   Future<void> _onAnalysePressed() async {
     if (!_canProceed) return;
 
     setState(() => _isAnalysing = true);
 
-    if (mounted) {
+    // Track whether the loading dialog is currently visible so we never
+    // attempt to pop a dialog that was never shown (cache hit path).
+    var dialogShowing = false;
+
+    try {
+      final imagePath = _selectedImage!.path;
+
+      // ── Cache hit — skip compression, dialog, and Gemini entirely ──────────
+      final cached = AnalysisCache.instance.get(imagePath);
+      if (cached != null) {
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FoodSelectionScreen(
+              imageFile: _selectedImage!,
+              geminiResult: cached,
+            ),
+          ),
+        );
+        return; // finally still runs → _isAnalysing = false
+      }
+
+      // ── Cache miss — compress → call Gemini → store ─────────────────────────
+
+      // Compress before showing the dialog so the UI stays responsive.
+      // Falls back to the original file silently if compression fails.
+      final compressedFile =
+          await ImageCompressionService.compress(_selectedImage!);
+
+      if (!mounted) return;
+
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (_) => const _AnalysingDialog(),
       );
-    }
+      dialogShowing = true;
 
-    try {
-      final result = await GeminiService().analyzeFood(_selectedImage!);
+      final result = await GeminiService().analyzeFood(compressedFile);
+
+      // Store on success only — a failed request must never pollute the cache.
+      AnalysisCache.instance.store(imagePath, result);
 
       if (!mounted) return;
       Navigator.of(context).pop(); // Close loading dialog
+      dialogShowing = false;
 
-      // weightG is no longer passed here — food must be confirmed first.
-      // MeasurementScreen handles weight/quantity input after confirmation.
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -88,18 +123,19 @@ class _AddMealScreenState extends State<AddMealScreen> {
       );
     } on GeminiException catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop();
+      if (dialogShowing) Navigator.of(context).pop();
       _showErrorSnackBar(e.message);
     } catch (_) {
       if (!mounted) return;
-      Navigator.of(context).pop();
+      if (dialogShowing) Navigator.of(context).pop();
       _showErrorSnackBar('Something went wrong. Please try again.');
     } finally {
+      // Always restore the button — whether cache hit, success, or error.
       if (mounted) setState(() => _isAnalysing = false);
     }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -107,12 +143,13 @@ class _AddMealScreenState extends State<AddMealScreen> {
         content: Text(message),
         backgroundColor: Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +203,7 @@ class _AddMealScreenState extends State<AddMealScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Private Sub-Widgets
+// Private Sub-Widgets  (unchanged)
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _ImagePickerArea extends StatelessWidget {
@@ -216,7 +253,8 @@ class _EmptyImagePlaceholder extends StatelessWidget {
     return const Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.camera_alt_outlined, size: 52, color: AppTheme.primaryLight),
+        Icon(Icons.camera_alt_outlined,
+            size: 52, color: AppTheme.primaryLight),
         SizedBox(height: 14),
         Text(
           'Take or upload a photo of your food',
@@ -278,7 +316,8 @@ class _SourceButton extends StatelessWidget {
       onPressed: onTap,
       icon: Icon(icon, size: 20),
       label: Text(label),
-      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+      style:
+          OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
     );
   }
 }
