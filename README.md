@@ -5,7 +5,7 @@
 <h1 align="center">Calivio</h1>
 
 <p align="center">
-AI-assisted nutrition tracking application for intelligent food recognition and nutrition tracking.
+AI-powered Flutter application for food recognition and intelligent nutrition tracking.
 </p>
 
 <p align="center">
@@ -16,12 +16,26 @@ AI-assisted nutrition tracking application for intelligent food recognition and 
   <img src="https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white"/>
 </p>
 
+## 📱 Application Screenshots
 
-Calivio is an AI-assisted nutrition tracking application that enables users to identify food from images, estimate nutritional values based on serving size, and maintain a persistent local meal history. The application combines Flutter, Gemini AI, and SQLite to deliver a responsive, offline-first mobile experience.
+<p align="center">
+  <img src="assets/screenshots/app_home_page.jpg" width="220"/>
+  <img src="assets/screenshots/app_add_meal_page.jpg" width="220"/>
+</p>
 
+<p align="center">
+  <img src="assets/screenshots/app_history_page.jpg" width="220"/>
+  <img src="assets/screenshots/app_analytics_page.jpg" width="220"/>
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/app_edit_goals_page.jpg" width="220"/>
+</p>
 
 
 ## 💡 Why Calivio?
+
+Calivio is an AI-assisted nutrition tracking application that enables users to identify food from images, estimate nutritional values based on serving size, and maintain a persistent local meal history. The application combines Flutter, Gemini AI, and SQLite to deliver a responsive, offline-first mobile experience.
 
 ## ✨ Key Features
 
@@ -29,12 +43,9 @@ Calivio is an AI-assisted nutrition tracking application that enables users to i
 |----------|-------------|
 | 📷 AI Food Recognition | Identifies food from images using the Gemini API. |
 | 🧠 Multiple AI Predictions | Displays multiple food predictions with confidence scores. |
-| 🥗 Nutrition Analysis
-Calculates calories and nutritional information based on AI-recognized food and serving size. |
-| 🥗 Nutrition Analysis | Calculates calories, macronutrients, and micronutrients. |
+| 🥗 Nutrition Analysis | Estimates calories, protein, macronutrients, and micronutrients based on the identified food and serving size. |
 | 📊 Daily Dashboard | Tracks daily nutrition intake and progress. |
-| 📝 Meal History
-Stores and organizes meal history locally using SQLite. |
+| 📝 Meal History | Stores and organizes meal history locally using SQLite. |
 | ✏️ Edit & Delete | Modify or remove previously logged meals. |
 | ⚡ Image Compression | Compresses images before AI requests for faster uploads. |
 | 🚀 Analysis Cache | Uses in-memory caching to reduce repeated API calls. |
